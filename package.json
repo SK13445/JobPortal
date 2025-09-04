@@ -4,13 +4,13 @@
   "description": "Job portal for Students",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "src/app.js"
   },
   "keywords": [
     "nodejs",
     "expressjs"
   ],
-  "author": "Akash",
+  "author": "Josh",
   "license": "ISC",
   "dependencies": {
     "bcrypt": "^6.0.0",
