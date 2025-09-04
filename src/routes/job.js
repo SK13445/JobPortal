@@ -251,4 +251,93 @@ jobRouter.get("/api/applications/my-jobs", auth, async (req, res) => {
   }
 });
 
+// Review application - accept or reject
+// PUT /api/request/review/:status/:applicationId
+jobRouter.put(
+  "/api/request/review/:status/:applicationId",
+  auth,
+  async (req, res) => {
+    try {
+      const { status, applicationId } = req.params;
+      const companyId = req.user._id;
+
+      // Validation
+      if (req.user.role !== "company") {
+        return res
+          .status(403)
+          .json({ message: "Only companies can review applications." });
+      }
+
+      if (!["accepted", "rejected"].includes(status)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid status. Use 'accepted' or 'rejected'." });
+      }
+
+      // Find application with job details
+      const application = await Application.findById(applicationId)
+        .populate("jobId", "companyId title")
+        .populate("candidateId", "firstName lastName email");
+
+      if (!application) {
+        return res.status(404).json({ message: "Application not found." });
+      }
+
+      // Check if application is in 'interested' state
+      if (application.status !== "interested") {
+        return res.status(400).json({
+          message: `Cannot review application with status '${application.status}'. Only 'interested' applications can be reviewed.`,
+          currentStatus: application.status,
+        });
+      }
+
+      // Verify company ownership
+      if (application.jobId.companyId.toString() !== companyId.toString()) {
+        return res.status(403).json({
+          message:
+            "Access denied. You can only review applications for your own jobs.",
+        });
+      }
+
+      // Update application status
+      application.status = status;
+      // application.reviewedAt = new Date();
+      await application.save();
+
+      // Get updated status counts for dashboard
+      const companyJobs = await Job.find({ companyId: companyId });
+      const jobIds = companyJobs.map((job) => job._id);
+      const applications = await Application.find({ jobId: { $in: jobIds } });
+
+      const statusCounts = {
+        ignored: applications.filter((app) => app.status === "ignored").length,
+        interested: applications.filter((app) => app.status === "interested")
+          .length,
+        accepted: applications.filter((app) => app.status === "accepted")
+          .length,
+        rejected: applications.filter((app) => app.status === "rejected")
+          .length,
+        total: applications.length,
+      };
+
+      res.status(200).json({
+        message: `Application ${status} successfully!`,
+        application: {
+          _id: application._id,
+          status: application.status,
+          reviewedAt: application.reviewedAt,
+          candidate: application.candidateId,
+          job: application.jobId,
+        },
+        dashboardStats: statusCounts,
+      });
+    } catch (error) {
+      console.error("Review error:", error);
+      if (error.name === "CastError") {
+        return res.status(400).json({ message: "Invalid application ID." });
+      }
+      res.status(500).json({ message: "Server error during review process." });
+    }
+  }
+);
 module.exports = { jobRouter };
